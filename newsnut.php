@@ -36,7 +36,7 @@ function register_ini_settings() {
 		die;
 	}
 
-	$hrs = isset($INI['MAIN']['NEWS_SINCE']) ? (int) $INI['MAIN']['NEWS_SINCE'] : 5;
+	$hrs = isset($INI['MAIN']['NEWS_SINCE']) ? (float) $INI['MAIN']['NEWS_SINCE'] : 5;
 	$CUTOFF_TIME = time() - ($hrs * 60 * 60);
 	$LAST_BUILD = array();
 	$SLEEP_DURATION = isset($INI['MAIN']['FREQ']) ? (int) $INI['MAIN']['FREQ'] : 120;
@@ -74,8 +74,9 @@ function parse_rss_result($response, $url, $request_info, $rss_ref_code, $time) 
 
 	$xml = @simplexml_load_string($response);
 	if (!$xml) {
-		echo "ERROR: Could not load RSS feed $rss_ref_code";
+		echo "ERROR: Could not load RSS feed $rss_ref_code" . PHP_EOL;
 		// var_dump($response);
+		// die;
 	}
 
 	if (isset($xml->channel->lastBuildDate)) {
@@ -132,6 +133,17 @@ function parse_rss_result($response, $url, $request_info, $rss_ref_code, $time) 
 			$msg .= !empty($trim_text) ? $trim_text . PHP_EOL : null;
 			$NEWS[$t] = $msg;
 		}
+		// To debug time
+		// else {
+		// 	$temp = new DateTime("@$t");
+		// 	$tempc = new DateTime("@$CUTOFF_TIME");
+		// 	$n = new DateTime("@" . time());
+		// 	$msg = $temp->format('F j, Y, g:i a');
+		// 	$msg .= ' <=> ' . $tempc->format('F j, Y, g:i a');
+		// 	$msg .= ' <=> ' . $n->format('F j, Y, g:i a');
+		// 	echo "$rss_ref_code $msg" . PHP_EOL;
+		// 	usleep(50000);
+		// }
 	}
 }
 
@@ -182,6 +194,7 @@ function clean_string($s) {
 	// ’ non unicode character is messed up in older terminals
 	$s = strToHex($s);
 	$s = str_replace('E28099', '27', $s);
+	$s = str_replace('E28098', '27', $s);
 	$s = hexToStr($s);
 
     $s = preg_replace('@<(\w+)\b.*?>.*?</\1>@si', '', $s);
@@ -196,11 +209,13 @@ function clean_string($s) {
 
 register_ini_settings();
 
-$rcx = new RollingCurlX(10);
 
 while (true) {
+	$rcx = new RollingCurlX(10);
+	$rcx->setTimeout(10000000);
+	$st = time();
 	foreach ($INI['RSS_FEED'] as $src => $link) {
-		$rcx->addRequest($link, null, 'parse_rss_result', $src, null, null);
+		$rcx->addRequest($link, null, 'parse_rss_result', $src, array(CURLOPT_SSL_VERIFYPEER => false), null);
 	}
 
 	$rcx->execute();
@@ -210,7 +225,10 @@ while (true) {
 		$CUTOFF_TIME = time();
 		$NEWS = null;
 	}
-	sleep($SLEEP_DURATION);
+	$duration = $SLEEP_DURATION - (time() - $st);
+	$duration = ($duration) > 0 ? ($duration) : 0;
+	sleep($duration);
+	unset($rcx);
 }
 
 // Thanks to stackoverflow.com/users/160092/boomla
